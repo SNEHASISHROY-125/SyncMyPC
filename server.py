@@ -22,6 +22,7 @@ import glob , json
 import socket, threading
 import os , time , sys
 from bus import send_file , receive_file , sync_Q
+from .folder import mkZIP
 
 def get_wifi_ip_address() -> str:
     hostname = socket.gethostname()
@@ -156,7 +157,9 @@ while True:
     # checks for dir updates(both remote and local) ,if changes in dir;
     # func returns list or dict ,containing file paths, in each eteration
     (_:=sync_dir(dir_vs=SYNC_DIR,socket=client_Q_socket2)) #dir_=os.path.join(os.getcwd(),'client')))
-    
+    # client_Q_socket2.send('dir_[list]'.encode())
+    # print(client_Q_socket2.recv(1024).decode())
+
     # [list]changes in local dir |  send files to client(remote)
     if type(_) is list :
         # print(_)
