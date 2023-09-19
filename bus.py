@@ -1,8 +1,11 @@
 '''
 Communication Bus
 '''
-import socket , json , os , time , datetime
+import socket , json , os , time , datetime 
+from tools.Btools import Tools as T
 # import socketio
+t  =  T()
+t._debug = (d:='(BUS)')
 
 def send_metadata(socket:socket.socket, meta:dict) -> bool | str:
     '''Dumped as json object and sent
@@ -193,11 +196,11 @@ def sync_Q(socket:socket.socket,Q_DICT:dict) -> None:
             # print('[FRO/M: bus lin194]',
             (res:=socket.recv(1024).decode(), type(res))
             if res  in Q_DICT.keys():     
-                # print('[FROM: bus lin196]', res)
+                t.print_(('syncQ','line',T.get_line_number(), res))
 
                 if callable(Q_DICT[res]):   val =  Q_DICT[res]()
                 else: val = Q_DICT[res]
-                # print('[FROM: bus lin200]',val)
+                t.print_(('syncQ','line',T.get_line_number(),val))
 
                 socket.send(
                     json.dumps({res :  val}).encode()
@@ -205,5 +208,118 @@ def sync_Q(socket:socket.socket,Q_DICT:dict) -> None:
             elif res == 'close-ok': break
             else: socket.send(json.dumps({'Query':'not valid'}).encode())
         except Exception as e : 
-            print('[FROM: bus lin 206 Exception]',e)
+            t.print_(('syncQ','line',T.get_line_number(),'Exception',e))
             break
+
+def recv_(s:socket.socket,debug:str,e:list[str],e_:type,buff:int=1024,res=None,) ->any:
+    '''
+    recv-Mod: (str | dict) for protocol build only, not for file transfer
+    - s > socket to connect
+    - debug > suffix to add for DEBUG
+    - e > expected items (iterable)
+    - e_ > expected types (not bytes)
+    - res > response: sent back to socket(s) [OPTIONAL]
+    - buff > Buffer-size(1024)
+    # 
+    prints (DEBUG) [FROM (BUS) debug + ...]
+    
+    OPERATION-until recieved ones are not in e or e_ type ,prints DEBUG ,cotinues to recv
+    
+    if expecting to recv str, pass expected values(str) to e
+    or expecting dict to recv, passed values(str) to e will be checked in the received dict-keys
+    
+     '''
+
+    res_ =  str(e_)+' '+str(e)
+    t  =  T()
+    t._debug = (d:='(BUS) ' + debug)
+
+    run = True
+    while run :
+        t.print_(payload=('recving...',))
+        rec = s.recv(buff)
+        # try to decode
+        try: rec = json.loads(rec.decode()) # try json
+        except json.decoder.JSONDecodeError: 
+            try:rec = rec.decode() # try to ->str 
+            except Exception:rec = rec  # keep it as bytes
+        
+        # match with e or e_
+        if e_ is dict and type(rec) is e_: 
+            t.print_(('lin ',T.get_line_number(),'got dict',))
+            # t.print_(('lin ',tl.get_line_number(),rec,))
+            res_ = {  e_ : e  }
+            if [ _ for _ in e if _ in rec.keys()]:
+                try:
+                    s.send('ok'.encode())
+                    return rec
+                except: ...
+                run = False
+                time.sleep(1)
+
+        elif rec == 'close':
+            t.print_(payload=(f'socket-{s}-down',))
+            break
+
+        elif e_ is str and type(rec) is e_:
+            t.print_(('lin ',T.get_line_number(),'got str',))
+            for item in e : 
+                if item == rec: 
+                    t.print_(payload=('lin',T.get_line_number(),rec,))
+                    run = False
+                    s.send('ok'.encode())
+                    try: return rec
+                    except: ...
+                    time.sleep(1)
+                    break
+        # if not mathced print >DEBUG
+        t.print_(payload=('not same as expected!', type(rec),rec,))
+        # send response: (str)
+        if res: s.send(  f'{d}-{T.get_line_number()}-{res}'.encode()  )
+        else:   s.send(  f'{d}-{T.get_line_number()}-expected:{res_}'.encode()  )
+
+def send_(s:socket.socket,debug:str,payload:any,res:str='ok',try_:int=2,_DEBUG:bool=True) ->any:
+    '''
+    recv-Mod: (str | dict) for protocol build only, not for file transfer
+    - s > socket to connect
+    - debug > suffix to add for DEBUG
+    - _DEBUG > (True) if true prints DEBUG
+    - payload > item to send 
+    - try_ > expected times to try sending (if not got res from recv_ ,ask for interruption)
+    - res > response: (expeccted)get back from socket(s) 
+    # 
+    prints (DEBUG) [FROM (BUS) suf + ...]
+    
+
+    OPERATION-sends payload(any), prints DEBUG, match with res-if not matched, 
+    try: sending payload (try_) times, if stil res not matched, ask-for-INTERRUPTION
+    '''
+
+    t  =  T()
+    if _DEBUG : t._debug = '(BUS)' + debug
+    t_ = try_
+    run = True
+    while run :
+        t.print_(('sending...',))
+        if type(payload) is not dict: s.send(  str(payload).encode()   )
+        elif type(payload) is dict: s.send(  json.dumps(payload).encode()   )
+        rec = s.recv(1024).decode()
+        # try to match
+        if rec == res: 
+            t.print_((rec,))
+            break
+        else: 
+            if try_ !=0:
+                try_ -= 1
+            else:
+                t.print_(('line',T.get_line_number(),f'tried {t_} times, getting {rec} not {res}'))
+                if input('try again (y/n)') == 'y': 
+                    try_ = t_
+                    continue
+                else:
+                    # s.send('close'.encode())
+                    break
+        #
+# i = t()
+# i._debug = 'bus'
+# i.print_(('line',t.get_line_number(),))

@@ -26,7 +26,7 @@ server_Q_port = json.loads(client_socket.recv(1024).decode())['Qport']
 
 # connect to server Query socket
 server_Q_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-'''Client-Query-socket for server_syncQ ,PORT 25250'''
+'''Client-Query-socket to connect with server_syncQ ,PORT 25250'''
 server_Q_socket.connect((server_ip, server_Q_port[0]))
 
 
@@ -54,7 +54,7 @@ threading.Thread(target=sync_Q,args=(server_Q_socket_2,Q_DICT)).start()
 while True:
     print('client-lloop.....')
     msgg = client_socket.recv(1024).decode()    # prepare for recv-file
-    print('[FROM:lin 67] llop',msgg)
+    print('[FROM:lin 57] llop',msgg)
 
     if msgg == 'close-ok':
         print('clss')
@@ -63,8 +63,10 @@ while True:
     
     elif msgg == 'req-file-path': 
         client_socket.send('req-file-path-ok'.encode())
-        file_path = json.loads(client_socket.recv(1024).decode())['req-file-path']
-        print('[FROM: lin 53]' ,file_path)
+        res = client_socket.recv(1024).decode()
+        print('[FROM: lin 51]' ,res)
+        file_path = json.loads(res)['req-file-path']
+        print('[FROM: lin 53]' ,file_path,)
 
         # get speed from server (Query: speed)
         server_Q_socket.send('current_speed'.encode())

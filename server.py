@@ -22,7 +22,7 @@ import glob , json
 import socket, threading
 import os , time , sys
 from bus import send_file , receive_file , sync_Q
-from .folder import mkZIP
+# from folder import mkZIP
 
 def get_wifi_ip_address() -> str:
     hostname = socket.gethostname()
