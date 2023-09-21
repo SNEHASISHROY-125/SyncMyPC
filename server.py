@@ -21,7 +21,8 @@ returns as list | dict (local-remote)
 import glob , json
 import socket, threading
 import os , time , sys
-from bus import send_file , receive_file , sync_Q
+from bus import recv_, send_, send_file , receive_file , sync_Q
+from tools.Btools import Tools as T
 # from folder import mkZIP
 
 def get_wifi_ip_address() -> str:
@@ -121,6 +122,7 @@ def sync_dir(socket:socket.socket=None,dir_:str=None,dir_vs:str=SYNC_DIR,file_me
     if changes found in remote dir(client) returns as dict,
     or changes in local dir returns as list
     '''
+    print('sync_dir-5')
     try: 
         if socket and not dir_ and dir_vs: 
             socket.send('dir_[list]'.encode())
@@ -152,6 +154,9 @@ def close_Client(d:bool=False) -> None:
         print(client.send('close-ok'.encode()))
         print(client_Q_socket2.send('close-ok'.encode()))
 
+# main-loop:
+l = T()
+l._debug = 'main-loop'
 
 while True:
     # checks for dir updates(both remote and local) ,if changes in dir;
@@ -159,34 +164,38 @@ while True:
     (_:=sync_dir(dir_vs=SYNC_DIR,socket=client_Q_socket2)) #dir_=os.path.join(os.getcwd(),'client')))
     # client_Q_socket2.send('dir_[list]'.encode())
     # print(client_Q_socket2.recv(1024).decode())
+    print('client-llll', _)
 
     # [list]changes in local dir |  send files to client(remote)
     if type(_) is list :
         # print(_)
         for file in _:
-            client.send(os.path.basename(file).encode())
+            send_(s=client,payload='file-path',debug='server')
 
-            msgg = client.recv(1024).decode()
+            msgg = recv_(s=client,debug='server',e=['file-path-ok'],e_=str,)
 
-            print(send_file(file_path=file,client=client, speed_=Q_DICT['current_speed'])) 
-            print(_,'done!')
-        print('sync-end')
+            l.print_((send_file(file_path=file,client=client, speed_=Q_DICT['current_speed']),)) 
+            l.print_((os.path.basename(file),'done!',))
+        l.print_(('sync-end',))
     
     # {}chaanges in remote dir  |  recive files from client(remote)
     elif type(_) is dict: 
         files_list = _['client-file-list']
-        print('[FROM: lin 157]',files_list)
-        # send file-path-request
-        client.send('req-file-path'.encode())
-        # check respponse (req-file-path-ok)
-        if client.recv(1024).decode() == 'req-file-path-ok':
-            for file in files_list:
+        # l.print_((files_list,),s='server')
+        print([os.path.basename(_) for _ in files_list])
+        
+        for file in files_list:
+            # send file-path-request
+            send_(payload='req-file-path',s=client,debug='server',)
+            # check respponse (req-file-path-ok)
+            if recv_(s=client,debug='server',e=['req-file-path-ok'],e_=str) == 'req-file-path-ok':
+
                 # send file path (request file) as dict
-                client.send(json.dumps({'req-file-path':file}).encode())
+                send_(s=client,payload={'req-file-path':file},debug='server',)
 
                 # check sd-ok
-                print('[FROM: lin 167]',msgg := client.recv(1024).decode())
+                l.print_(payload=(msgg := recv_(s=client,debug='server',e_=str,e=['sd-ok'],),),s='server',)
                 if msgg == 'sd-ok': 
-                    print(receive_file(save_dir=SYNC_DIR,client_socket=client))
-                print(_,'done!')
-            print('sync-end')
+                    l.print_((receive_file(save_dir=SYNC_DIR,client_socket=client),),s='server')
+                l.print_((os.path.basename(file),'done!',),s='server')
+            l.print_(('sync-end',),s='server')

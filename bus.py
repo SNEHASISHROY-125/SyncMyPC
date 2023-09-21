@@ -1,6 +1,7 @@
 '''
 Communication Bus
 '''
+import inspect
 import socket , json , os , time , datetime 
 from tools.Btools import Tools as T
 # import socketio
@@ -196,11 +197,12 @@ def sync_Q(socket:socket.socket,Q_DICT:dict) -> None:
             # print('[FRO/M: bus lin194]',
             (res:=socket.recv(1024).decode(), type(res))
             if res  in Q_DICT.keys():     
-                t.print_(('syncQ','line',T.get_line_number(), res))
+                # t.print_(('syncQ','line',T.get_line_number(), res))
+                t.print_(s='syncQ', payload=(res,),d=False)
 
                 if callable(Q_DICT[res]):   val =  Q_DICT[res]()
                 else: val = Q_DICT[res]
-                t.print_(('syncQ','line',T.get_line_number(),val))
+                t.print_(s='syncQ', payload=(val,),d=False)
 
                 socket.send(
                     json.dumps({res :  val}).encode()
@@ -208,18 +210,19 @@ def sync_Q(socket:socket.socket,Q_DICT:dict) -> None:
             elif res == 'close-ok': break
             else: socket.send(json.dumps({'Query':'not valid'}).encode())
         except Exception as e : 
-            t.print_(('syncQ','line',T.get_line_number(),'Exception',e))
+            t.print_(s='syncQ',payload=('Exception',e,),d=False)
             break
 
-def recv_(s:socket.socket,debug:str,e:list[str],e_:type,buff:int=1024,res=None,) ->any:
+def recv_(s:socket.socket,debug:str,e:list[str],e_:type,buff:int=1024,_DEBUG:bool=True,res=None,h_:str=None) ->any:
     '''
     recv-Mod: (str | dict) for protocol build only, not for file transfer
     - s > socket to connect
     - debug > suffix to add for DEBUG
     - e > expected items (iterable)
     - e_ > expected types (not bytes)
-    - res > response: sent back to socket(s) [OPTIONAL]
+    - res > response: sent back to socket(s) [OPTIONAL] ('ok')
     - buff > Buffer-size(1024)
+    - h_ > id ,works as header
     # 
     prints (DEBUG) [FROM (BUS) debug + ...]
     
@@ -230,55 +233,87 @@ def recv_(s:socket.socket,debug:str,e:list[str],e_:type,buff:int=1024,res=None,)
     
      '''
 
+    frame_info = inspect.currentframe()
+    try:
+        caller_frame = frame_info.f_back
+        line_number = caller_frame.f_lineno
+    finally:
+        del frame_info
+
+    s_ = debug + (str(line_number)) + ' recv_'
     res_ =  str(e_)+' '+str(e)
-    t  =  T()
-    t._debug = (d:='(BUS) ' + debug)
+    d = '(BUS) recv_' 
+    # header for packets to send
+    if not h_: h_ = 'recv_send_ '
 
     run = True
     while run :
-        t.print_(payload=('recving...',))
-        rec = s.recv(buff)
-        # try to decode
-        try: rec = json.loads(rec.decode()) # try json
-        except json.decoder.JSONDecodeError: 
-            try:rec = rec.decode() # try to ->str 
-            except Exception:rec = rec  # keep it as bytes
-        
-        # match with e or e_
-        if e_ is dict and type(rec) is e_: 
-            t.print_(('lin ',T.get_line_number(),'got dict',))
-            # t.print_(('lin ',tl.get_line_number(),rec,))
-            res_ = {  e_ : e  }
-            if [ _ for _ in e if _ in rec.keys()]:
-                try:
-                    s.send('ok'.encode())
-                    return rec
-                except: ...
-                run = False
-                time.sleep(1)
+        t.print_(payload=('recving...',),s=s_,d=_DEBUG)
 
-        elif rec == 'close':
-            t.print_(payload=(f'socket-{s}-down',))
-            break
+        try:
+            rec = s.recv(buff)
+            # try to decode
+            try: rec = json.loads(rec.decode()) # try json
+            except json.decoder.JSONDecodeError: 
+                try:rec = rec.decode() # try to ->str 
+                except Exception:rec = rec  # keep it as bytes
+        except Exception as e: 
+            t.print_(payload=('Exception',e,),s=s_,d=_DEBUG)
+            if input('try again (y/n)') == 'y': 
+                    continue
+            else:
+                break
 
-        elif e_ is str and type(rec) is e_:
-            t.print_(('lin ',T.get_line_number(),'got str',))
-            for item in e : 
-                if item == rec: 
-                    t.print_(payload=('lin',T.get_line_number(),rec,))
-                    run = False
-                    s.send('ok'.encode())
-                    try: return rec
+        # verify thats from send_ and has 'recv_send_ ' key in (dict)
+        if type(rec) is dict and 'recv_send_ ' in rec.keys():
+
+            # match with e or e_            
+            if e_ is dict and type(rec) is e_ : 
+                t.print_(('got dict',),s=s_,d=_DEBUG)
+                # t.print_(('lin ',tl.get_line_number(),rec,))
+                res_ = {  e_ : e  }
+                if [ _ for _ in e if _ in rec.keys()]:
+                    try:
+                        time.sleep(1)
+                        s.send((h_+'ok').encode())
+                        return rec
                     except: ...
-                    time.sleep(1)
-                    break
-        # if not mathced print >DEBUG
-        t.print_(payload=('not same as expected!', type(rec),rec,))
-        # send response: (str)
-        if res: s.send(  f'{d}-{T.get_line_number()}-{res}'.encode()  )
-        else:   s.send(  f'{d}-{T.get_line_number()}-expected:{res_}'.encode()  )
+                    run = False
+            
+            # if not mathced print >DEBUG
+            t.print_(payload=('not same as expected!', type(rec),rec,),s=s_,d=_DEBUG)
+            # send response: (str)
+            if res: s.send(  f'{h_+d}-{T.get_line_number()}-{res}'.encode()  )
+            else:   s.send(  f'{h_+d}-{T.get_line_number()}-expected:{res_}'.encode()  )
 
-def send_(s:socket.socket,debug:str,payload:any,res:str='ok',try_:int=2,_DEBUG:bool=True) ->any:
+        # verify thats from send_ (must have 'recv_send_ ') (header)
+        elif type(rec) is str and rec.startswith('recv_send_ '): 
+
+            # match with e or e_
+            if rec.split('recv_send_ ',1)[1] == 'close':
+                t.print_(payload=(f'socket-{s}-down',),s=s_,d=_DEBUG)
+                break
+
+            elif e_ is str and type(rec) is e_:
+                t.print_(('got str',),s=s_,d=_DEBUG)
+                rec = rec.split('recv_send_ ',1)[1]
+                for item in e : 
+                    if item == rec: 
+                        t.print_((rec,),s=s_,d=_DEBUG)
+                        run = False
+                        time.sleep(1)
+                        s.send((h_+'ok').encode())
+                        try: return rec
+                        except: ...    
+                        break
+
+            # if not mathced print >DEBUG
+            t.print_(payload=('not same as expected!', type(rec),rec,),s=s_,d=_DEBUG)
+            # send response: (str)
+            if res: s.send(  f'{h_+d}-{T.get_line_number()}-{res}'.encode()  )
+            else:   s.send(  f'{h_+d}-{T.get_line_number()}-expected:{res_}'.encode()  )
+
+def send_(s:socket.socket,debug:str,payload:any,res:str='ok',try_:int=2,_DEBUG:bool=True,h_:str=None) ->None:
     '''
     recv-Mod: (str | dict) for protocol build only, not for file transfer
     - s > socket to connect
@@ -287,39 +322,63 @@ def send_(s:socket.socket,debug:str,payload:any,res:str='ok',try_:int=2,_DEBUG:b
     - payload > item to send 
     - try_ > expected times to try sending (if not got res from recv_ ,ask for interruption)
     - res > response: (expeccted)get back from socket(s) 
+    - h_ > id ,works as header
     # 
     prints (DEBUG) [FROM (BUS) suf + ...]
     
 
-    OPERATION-sends payload(any), prints DEBUG, match with res-if not matched, 
-    try: sending payload (try_) times, if stil res not matched, ask-for-INTERRUPTION
+    OPERATION-sends payload(any) with 1-sec delay, prints DEBUG, match with res-if not matched, 
+    try: sending payload (try_) times in 1-sec interval, if stil res not matched, ask-for-INTERRUPTION
     '''
 
-    t  =  T()
-    if _DEBUG : t._debug = '(BUS)' + debug
+    frame_info = inspect.currentframe()
+    try:
+        caller_frame = frame_info.f_back
+        line_number = caller_frame.f_lineno
+    finally:
+        del frame_info
+
+    s_ = debug + (str(line_number)) + ' send_'
+    # if _DEBUG : t._debug = '(BUS) ' + debug
     t_ = try_
+    # header for packets to send
+    if not h_: h_ = 'recv_send_ '
     run = True
+
     while run :
-        t.print_(('sending...',))
-        if type(payload) is not dict: s.send(  str(payload).encode()   )
-        elif type(payload) is dict: s.send(  json.dumps(payload).encode()   )
-        rec = s.recv(1024).decode()
+        t.print_(('sending...',),s=s_,d=_DEBUG)
+        ## adding header to payload and send
+        # wait for 1-sec
+        time.sleep(1)
+        if type(payload) is not dict: s.send(  str(h_+payload).encode()   )
+        elif type(payload) is dict: 
+            payload['recv_send_ '] = 'recv_send_ '
+            s.send(  json.dumps(payload).encode()   )
+
+        while True:        
+            # wait for 'ok' response
+            rec = s.recv(1024).decode()
+            # verify thats from recv_ (must have 'recv_send_ ')(header)
+            if not rec.startswith('recv_send_ '): continue
+            else: break
+
         # try to match
-        if rec == res: 
-            t.print_((rec,))
+        if rec.split('recv_send_ ',1)[1] == res: 
+            t.print_((rec,),s=s_,d=_DEBUG)
             break
         else: 
             if try_ !=0:
                 try_ -= 1
+                # time.sleep(1)
             else:
-                t.print_(('line',T.get_line_number(),f'tried {t_} times, getting {rec} not {res}'))
+                t.print_((f'tried {t_} times, getting {rec} not {h_+res}',),s=s_,d=_DEBUG)
                 if input('try again (y/n)') == 'y': 
                     try_ = t_
+                    # s.send('ok'.encode())
                     continue
                 else:
                     # s.send('close'.encode())
                     break
-        #
-# i = t()
-# i._debug = 'bus'
-# i.print_(('line',t.get_line_number(),))
+
+        # else: t.print_(('Expecting',h_+payload,'got',rec,),s=s_,d=_DEBUG) 
+            #

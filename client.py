@@ -1,7 +1,8 @@
 import datetime
 import socket , threading
 import os , time , json , glob
-from bus import bytes_toKMG ,receive_file , get_files_metadata  as gtfm , sync_Q ,send_file
+from bus import bytes_toKMG ,receive_file , get_files_metadata  as gtfm , sync_Q ,send_file,recv_,send_
+from tools.Btools import Tools as T
 
 
 SYNC_DIR = os.path.join(os.getcwd(),'client')
@@ -51,9 +52,14 @@ Query Dict: server-client (query)
 # s_lock = threading.Lock()         
 threading.Thread(target=sync_Q,args=(server_Q_socket_2,Q_DICT)).start()
 
+
+# main-loop:
+c = T()
+c._debug = 'c-main-loop'
+
 while True:
     print('client-lloop.....')
-    msgg = client_socket.recv(1024).decode()    # prepare for recv-file
+    msgg = recv_(s=client_socket,debug='client',e=['req-file-path','close-ok','file-path'],e_=str)    # prepare for recv-file
     print('[FROM:lin 57] llop',msgg)
 
     if msgg == 'close-ok':
@@ -62,28 +68,28 @@ while True:
         break
     
     elif msgg == 'req-file-path': 
-        client_socket.send('req-file-path-ok'.encode())
-        res = client_socket.recv(1024).decode()
-        print('[FROM: lin 51]' ,res)
-        file_path = json.loads(res)['req-file-path']
-        print('[FROM: lin 53]' ,file_path,)
-
+        send_(s=client_socket,payload='req-file-path-ok',debug='client',)
+        res = recv_(s=client_socket,debug='client',e_=dict,e=['req-file-path'])
+        c.print_((res,),s='client')
+        file_path = (res)['req-file-path']
+        # c.print_((res,file_path,),s='client',)
+ 
         # get speed from server (Query: speed)
         server_Q_socket.send('current_speed'.encode())
-        print('[FROM: lin 57]',res:= json.loads(server_Q_socket.recv(1024).decode()))
+        c.print_((res:= json.loads(server_Q_socket.recv(1024).decode()),),s='client',)
         speed = res['current_speed']
 
         # send file-notice  (sending-file now)
-        client_socket.send('sd-ok'.encode())
+        send_(s=client_socket,payload='sd-ok',debug='client',)
         # send file to client
         send_file(client=client_socket,file_path=file_path,speed_=speed)
         # client_socket.
 
-    else:
-        print(os.getcwd())
-        client_socket.send(msgg.encode())    # all resources prepared, ready to recv-file!
+    elif msgg == 'file-path':
+        # print(os.getcwd())
+        send_(s=client_socket,payload='file-path-ok',debug='client',)    # all resources prepared, ready to recv-file!
         # for file in msgg:
-        print(receive_file(client_socket=client_socket,save_dir=SYNC_DIR))
+        c.print_((receive_file(client_socket=client_socket,save_dir=SYNC_DIR),),s='client',)
 
 print('done!')
 client_socket.close()
