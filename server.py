@@ -20,8 +20,8 @@ returns as list | dict (local-remote)
 
 import glob , json
 import socket, threading
-import os , time , sys
-from bus import recv_, send_, send_file , receive_file , sync_Q
+import os , time , sys, struct
+from bus import recv_, send_, send_file , receive_file , sync_Q , ask_sync_Q
 from tools.Btools import Tools as T
 # from folder import mkZIP
 
@@ -117,17 +117,16 @@ def sync_dir(socket:socket.socket=None,dir_:str=None,dir_vs:str=SYNC_DIR,file_me
     - dir_ -> dir to compare    (remote)
     - dir_vs -> dir to check against    (local)
     - file_meta -> file-paths-list of dir_ to compare
-    - socket: requests file-path[list] (remote) as json 
+    - socket: requests file-path[list] (remote)  
     #
     if changes found in remote dir(client) returns as dict,
     or changes in local dir returns as list
     '''
-    print('sync_dir-5')
+
     try: 
         if socket and not dir_ and dir_vs: 
-            socket.send('dir_[list]'.encode())
-            file_meta = json.loads(socket.recv(1024).decode())['dir_[list]']  # recv_metadata (dir_)
-            # print('[FROM: server lin111]',file_meta)
+            file_meta = ask_sync_Q(s=socket,q='dir_[list]')['dir_[list]']  # recv_metadata (dir_)
+
         elif dir_ and dir_vs:
             file_meta = glob.glob(os.path.join(dir_,'**/*.*'), recursive=True) #(path) list of file-paths to ccheck against
 
@@ -138,7 +137,7 @@ def sync_dir(socket:socket.socket=None,dir_:str=None,dir_vs:str=SYNC_DIR,file_me
         elif (files_:=[file for file in file_meta if os.path.basename(file) not in [os.path.basename(file_base) for file_base in files]]) : return {'client-file-list':files_}
         
         else: return None
-    except Exception as e: return e
+    except Exception as e: return str(e)
 
 
 print('chilling!')
@@ -156,7 +155,7 @@ def close_Client(d:bool=False) -> None:
 
 # main-loop:
 l = T()
-l._debug = 'main-loop'
+l._debug = '(main-loop)'
 
 while True:
     # checks for dir updates(both remote and local) ,if changes in dir;
@@ -164,9 +163,8 @@ while True:
     (_:=sync_dir(dir_vs=SYNC_DIR,socket=client_Q_socket2)) #dir_=os.path.join(os.getcwd(),'client')))
     # client_Q_socket2.send('dir_[list]'.encode())
     # print(client_Q_socket2.recv(1024).decode())
-    print('client-llll', _)
 
-    # [list]changes in local dir |  send files to client(remote)
+    # [list]changes in local dir | send files to client(remote)
     if type(_) is list :
         # print(_)
         for file in _:
@@ -178,11 +176,11 @@ while True:
             l.print_((os.path.basename(file),'done!',))
         l.print_(('sync-end',))
     
-    # {}chaanges in remote dir  |  recive files from client(remote)
+    # {}changes in remote dir | recive files from client(remote)
     elif type(_) is dict: 
         files_list = _['client-file-list']
         # l.print_((files_list,),s='server')
-        print([os.path.basename(_) for _ in files_list])
+        l.print_(([os.path.basename(_) for _ in files_list],),s='server')
         
         for file in files_list:
             # send file-path-request
@@ -196,6 +194,11 @@ while True:
                 # check sd-ok
                 l.print_(payload=(msgg := recv_(s=client,debug='server',e_=str,e=['sd-ok'],),),s='server',)
                 if msgg == 'sd-ok': 
-                    l.print_((receive_file(save_dir=SYNC_DIR,client_socket=client),),s='server')
+                    l.print_((receive_file(save_dir=SYNC_DIR,client_socket=client,debug_='server'),),s='server')
                 l.print_((os.path.basename(file),'done!',),s='server')
             l.print_(('sync-end',),s='server')
+
+    # 'str'  |  error-Exception  
+    elif type(_) is str: 
+        l.print_((_,),s='(ERROR)')
+        break

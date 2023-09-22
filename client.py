@@ -1,7 +1,7 @@
 import datetime
 import socket , threading
 import os , time , json , glob
-from bus import bytes_toKMG ,receive_file , get_files_metadata  as gtfm , sync_Q ,send_file,recv_,send_
+from bus import bytes_toKMG ,receive_file , get_files_metadata  as gtfm , sync_Q ,send_file,recv_,send_ , ask_sync_Q
 from tools.Btools import Tools as T
 
 
@@ -75,8 +75,11 @@ while True:
         # c.print_((res,file_path,),s='client',)
  
         # get speed from server (Query: speed)
+        '''
         server_Q_socket.send('current_speed'.encode())
         c.print_((res:= json.loads(server_Q_socket.recv(1024).decode()),),s='client',)
+        '''
+        res = ask_sync_Q(s=server_Q_socket,q='current_speed')
         speed = res['current_speed']
 
         # send file-notice  (sending-file now)

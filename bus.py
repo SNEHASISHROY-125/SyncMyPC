@@ -2,11 +2,13 @@
 Communication Bus
 '''
 import inspect
-import socket , json , os , time , datetime 
+import socket , json , os , time , datetime
+import struct 
 from tools.Btools import Tools as T
 # import socketio
 t  =  T()
 t._debug = (d:='(BUS)')
+_sleep = 0.2
 
 def send_metadata(socket:socket.socket, meta:dict) -> bool | str:
     '''Dumped as json object and sent
@@ -87,7 +89,7 @@ def send_file(file_path:str, client:socket.socket,speed_:int) ->bool:
         break
     return True
 
-def receive_file(client_socket, save_dir:str) -> bool:
+def receive_file(client_socket, save_dir:str, debug_:str='recieve_file') -> bool:
     '''
     - client_socket : connected-socket
     - save_dir : save-dir
@@ -110,37 +112,46 @@ def receive_file(client_socket, save_dir:str) -> bool:
     - send('error')
 
     '''
+    def get_name(n:str) -> str:
+        v = n.split('.')
+        return (
+            ''.join([(v[_]) for _ in range(len(v)-1)])
+        )
+
+    if debug_ != 'recieve_file' : debug_ += ' recieve_file' 
+
     try:
         # ask for meta-data (file)
         client_socket.send('meta-sd'.encode())
-        print(meta_ := recv_metadata(socket=client_socket))
+        t.print_((meta_ := recv_metadata(socket=client_socket),),d=debug_)
         
         # check is-file exists
-        if (os.path.isfile(path_:=os.path.join(save_dir,meta_['file_name']))): path_ = os.path.join(save_dir, ((fd:=get_files_metadata(path_=path_))['name']+str(datetime.datetime.now())[::3]+fd['.extn']))
+        if (os.path.isfile(path_:=os.path.join(save_dir,meta_['file_name']))): 
+            path_ = os.path.join(save_dir, (get_name((fd:=get_files_metadata(path_=path_))['name'])+(str(datetime.datetime.now())[::3]+fd['.extn'])))
         else: path_ = os.path.join(save_dir,meta_['file_name'])
-        print('[FROM:recieve_file] path',path_)
+        t.print_(('path',path_,),d=debug_)
 
         with open(path_, 'xb') as file:
 
-            print('reciving file...')               # DEBUG[[01]]
+            t.print_(('reciving file...',),s=debug_)               # DEBUG[[01]]
             client_socket.send('sd-ok'.encode())    # confirmation:start-sending
 
             file_recived = 0
 
             while file_recived < meta_['size']:
                 bin_ = client_socket.recv(meta_['speed'])    # speed/s
-                print('[FROM:recieve_file] got ',rt:=bytes_toKMG(bin_),type(rt[0]),rt[1])
+                t.print_(('got ',rt:=bytes_toKMG(bin_),type(rt[0]),rt[1],),s=debug_)
                 file.write(bin_)
                 # print(type(bin_))
                 file_recived += len(bin_)
                 client_socket.send('rc-ok'.encode())    # server-client sync (recived-ok)
-            print('[FROM:recieve_file] recived file! size(bytes)',bytes_toKMG(file_recived) ,'/t')
+            t.print_(('recived file! size(bytes)',bytes_toKMG(file_recived) ,'/t',),s=debug_)
                     # break
             file.close()
-            time.sleep(1)
+            time.sleep(_sleep)
             client_socket.send('sd-ok'.encode())    # recived entire file  (transmition sucess!)
     except Exception as e: 
-        print('[FROM:recieve_file] from client',e)
+        t.print_(s=debug_,payload=(e,))
         client_socket.send('error'.encode())  # send error message
         return False
     return True
@@ -186,7 +197,12 @@ def get_files_metadata(dir_:str=None,path_:str=None) -> dict|None:
 
 def sync_Q(socket:socket.socket,Q_DICT:dict) -> None:
     '''
-    SYnc Query function that runs on separete thread, provides query topics from Q_DICT
+    SYnc Query function that runs on separete thread, provides query topics from ``Q_DICT``,
+    SENDS-as ``DICT``
+    
+    OPERATION- recv ``Query``, ``match in DICT``, send  ``buff-size(int)``,
+    recv ``buff-ok``, send as ``DICT``
+
     '''
     print('sync-q  running!....')
     while True:
@@ -197,21 +213,51 @@ def sync_Q(socket:socket.socket,Q_DICT:dict) -> None:
             # print('[FRO/M: bus lin194]',
             (res:=socket.recv(1024).decode(), type(res))
             if res  in Q_DICT.keys():     
-                # t.print_(('syncQ','line',T.get_line_number(), res))
                 t.print_(s='syncQ', payload=(res,),d=False)
 
                 if callable(Q_DICT[res]):   val =  Q_DICT[res]()
                 else: val = Q_DICT[res]
                 t.print_(s='syncQ', payload=(val,),d=False)
-
+                
+                # send buff-size
+                socket.send(
+                    struct.pack('!i',len(json.dumps({res :  val}).encode()))
+                )
+                # wait for recv (buff-ok)
+                socket.recv(10)
+                # send dict
                 socket.send(
                     json.dumps({res :  val}).encode()
                 )
+
             elif res == 'close-ok': break
-            else: socket.send(json.dumps({'Query':'not valid'}).encode())
+            else: 
+                socket.send(json.dumps({'Query':'not valid'}).encode())
         except Exception as e : 
-            t.print_(s='syncQ',payload=('Exception',e,),d=False)
+            t.print_(s='syncQ',payload=('Exception',e,),)
             break
+
+def ask_sync_Q(s:socket.socket,q:str) -> dict:
+    '''
+    PROTOCOL to query ``Sync_Q``
+    
+    on-``Exception`` returns ``None``
+    '''
+    try:
+        # send query 
+        s.send(q.encode())
+        # try to decode, (unpack-buff[int])
+        try: buff = struct.unpack('!i',res:= s.recv(1024))[0]
+        except struct.error: buff = json.loads(res.decode())
+        # dict | query not matched -> return {'Query':'not valid'}
+        if type(buff) is dict: return buff
+        # int | query matched -> buffer-size (recv) , that bytes to recieve contains
+        elif type(buff) is int:
+            s.send('buff-ok'.encode())
+            return json.loads(s.recv(buff).decode())
+    except Exception as e: 
+        t.print_(s='ask_Sync_Q',payload=('Exception',e,))
+        return 
 
 def recv_(s:socket.socket,debug:str,e:list[str],e_:type,buff:int=1024,_DEBUG:bool=True,res=None,h_:str=None) ->any:
     '''
@@ -274,7 +320,7 @@ def recv_(s:socket.socket,debug:str,e:list[str],e_:type,buff:int=1024,_DEBUG:boo
                 res_ = {  e_ : e  }
                 if [ _ for _ in e if _ in rec.keys()]:
                     try:
-                        time.sleep(1)
+                        time.sleep(_sleep)
                         s.send((h_+'ok').encode())
                         return rec
                     except: ...
@@ -301,7 +347,7 @@ def recv_(s:socket.socket,debug:str,e:list[str],e_:type,buff:int=1024,_DEBUG:boo
                     if item == rec: 
                         t.print_((rec,),s=s_,d=_DEBUG)
                         run = False
-                        time.sleep(1)
+                        time.sleep(_sleep)
                         s.send((h_+'ok').encode())
                         try: return rec
                         except: ...    
@@ -348,8 +394,8 @@ def send_(s:socket.socket,debug:str,payload:any,res:str='ok',try_:int=2,_DEBUG:b
     while run :
         t.print_(('sending...',),s=s_,d=_DEBUG)
         ## adding header to payload and send
-        # wait for 1-sec
-        time.sleep(1)
+        # wait for 1-sec (_sleep)
+        time.sleep(_sleep)
         if type(payload) is not dict: s.send(  str(h_+payload).encode()   )
         elif type(payload) is dict: 
             payload['recv_send_ '] = 'recv_send_ '
@@ -369,16 +415,12 @@ def send_(s:socket.socket,debug:str,payload:any,res:str='ok',try_:int=2,_DEBUG:b
         else: 
             if try_ !=0:
                 try_ -= 1
-                # time.sleep(1)
             else:
                 t.print_((f'tried {t_} times, getting {rec} not {h_+res}',),s=s_,d=_DEBUG)
                 if input('try again (y/n)') == 'y': 
                     try_ = t_
-                    # s.send('ok'.encode())
                     continue
                 else:
-                    # s.send('close'.encode())
                     break
 
-        # else: t.print_(('Expecting',h_+payload,'got',rec,),s=s_,d=_DEBUG) 
             #
