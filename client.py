@@ -11,7 +11,7 @@ if not os.path.isdir(SYNC_DIR): os.mkdir(SYNC_DIR)
 Dir to save files
 '''
 
-server_ip = '192.168.1.4'  # Replace with the server's IP address
+server_ip = '192.168.1.5'  # Replace with the server's IP address
 server_port = 25200  # Replace with the server's port number
 
 
@@ -73,7 +73,7 @@ while True:
         c.print_((res,),s='client')
         file_path = (res)['req-file-path']
         # c.print_((res,file_path,),s='client',)
- 
+
         # get speed from server (Query: speed)
         '''
         server_Q_socket.send('current_speed'.encode())
