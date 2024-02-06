@@ -17,6 +17,7 @@ returns as list | dict (local-remote)
     - start ...
 
 '''
+
 import glob , json
 import socket, threading
 import os , time , sys, struct
@@ -24,8 +25,10 @@ from bus import recv_, send_, send_file , receive_file , sync_Q , ask_sync_Q
 from tools.Btools import Tools as T
 # from folder import mkZIP
 
-class Server:
+global RUN_ 
+RUN_ = False
 
+def server():
 
     def get_wifi_ip_address() -> str:
         hostname = socket.gethostname()
@@ -98,7 +101,7 @@ class Server:
 
 
 
-    def func_list_dir(self) -> list: return glob.glob(os.path.join(self.SYNC_DIR,'**/*.*'), recursive=True)
+    def func_list_dir() -> list: return glob.glob(os.path.join(SYNC_DIR,'**/*.*'), recursive=True)
 
 
     Q_DICT = {
@@ -149,19 +152,20 @@ class Server:
     threading.Thread(target=sync_Q,args=(client_Q_socket,Q_DICT ,)).start()
 
     # close client-API
-    def close_Client(self,d:bool=False) -> None:
+    def close_Client(d:bool=False) -> None:
         '''Closes client socckets'''
         if d:
-            print(self.client.send('close-ok'.encode()))
-            print(self.client_Q_socket2.send('close-ok'.encode()))
+            print(client.send('close-ok'.encode()))
+            print(client_Q_socket2.send('close-ok'.encode()))
 
     # main-loop:
     l = T()
     l._debug = '(main-loop)'
 
     # RUN_ = BOOL | SERVER-MAIN-LOOP-STATE
+    global RUN_
     RUN_ = True
-
+    print(RUN_)
     while True:
         # checks for dir updates(both remote and local) ,if changes in dir;
         # func returns list or dict ,containing file paths, in each eteration
@@ -207,3 +211,5 @@ class Server:
         elif type(_) is str: 
             l.print_((_,),s='(ERROR)')
             break
+
+print(RUN_)

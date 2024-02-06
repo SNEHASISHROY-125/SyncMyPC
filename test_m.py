@@ -1,1 +1,4 @@
-import test
+# import test
+import server
+
+server.server()
