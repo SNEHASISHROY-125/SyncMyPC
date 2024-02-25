@@ -14,8 +14,15 @@ returns as list | dict (local-remote)
 - opeartion: 
     - sets up three sever-sockets: server_socket, query_socket, query_socket2
     - start Sync_Q in seperate thread
-    - start ...
+    - start
+===
+- import server as s
+- s.start_server() : starts server in seperate thread, but linked with main-thread
+- s.memry_dict : contains server-constants : [server_running, server_port, server_ip, supported_speed, current_speed, sync_dir]
 
+``PARENTAL CONTROLL``
+ - server_running : BOOL | can be changed to stop server running in seperate thread
+ - ``server can stop closing all sockets if EXEPTION OCCURS``
 '''
 
 import glob , json
@@ -27,6 +34,9 @@ from tools.Btools import Tools as T
 
 
 def get_wifi_ip_address() -> str:
+    '''
+    Both INTERNAL and EXTERNAL UseCase
+    '''
     hostname = socket.gethostname()
     ip_address = socket.gethostbyname(hostname)
     return ip_address
@@ -162,8 +172,10 @@ def server():
     def close_Client(d:bool=False) -> None:
         '''Closes client socckets'''
         if d:
-            print(client.send('recv_send_ close-ok'.encode()))
-            print(client_Q_socket2.send('close-ok'.encode()))
+            try: print(client.send('recv_send_ close-ok'.encode()))
+            except Exception as e: print(e)
+            try: print(client_Q_socket2.send('close-ok'.encode()))
+            except Exception as e: print(e)
 
     # main-loop:
     l = T()
@@ -174,50 +186,57 @@ def server():
     memry_dict['server_running'] = True
     print(memry_dict['server_running'])
     while memry_dict['server_running']: #True:
-        # checks for dir updates(both remote and local) ,if changes in dir;
-        # func returns list or dict ,containing file paths, in each eteration
-        (_:=sync_dir(dir_vs=SYNC_DIR,socket=client_Q_socket2)) #dir_=os.path.join(os.getcwd(),'client')))
-        # client_Q_socket2.send('dir_[list]'.encode())
-        # print(client_Q_socket2.recv(1024).decode())
+        try:
+            # checks for dir updates(both remote and local) ,if changes in dir;
+            # func returns list or dict ,containing file paths, in each eteration
+            (_:=sync_dir(dir_vs=SYNC_DIR,socket=client_Q_socket2)) #dir_=os.path.join(os.getcwd(),'client')))
+            # client_Q_socket2.send('dir_[list]'.encode())
+            # print(client_Q_socket2.recv(1024).decode())
 
-        # [list]changes in local dir | send files to client(remote)
-        if type(_) is list :
-            # print(_)
-            for file in _:
-                send_(s=client,payload='file-path',debug='server')
+            # [list]changes in local dir | send files to client(remote)
+            if type(_) is list :
+                # print(_)
+                for file in _:
+                    send_(s=client,payload='file-path',debug='server')
 
-                msgg = recv_(s=client,debug='server',e=['file-path-ok'],e_=str,)
+                    msgg = recv_(s=client,debug='server',e=['file-path-ok'],e_=str,)
 
-                l.print_((send_file(file_path=file,client=client, speed_=Q_DICT['current_speed']),)) 
-                l.print_((os.path.basename(file),'done!',))
-            l.print_(('sync-end',))
-        
-        # {}changes in remote dir | recive files from client(remote)
-        elif type(_) is dict: 
-            files_list = _['client-file-list']
-            # l.print_((files_list,),s='server')
-            l.print_(([os.path.basename(_) for _ in files_list],),s='server')
+                    l.print_((send_file(file_path=file,client=client, speed_=Q_DICT['current_speed']),)) 
+                    l.print_((os.path.basename(file),'done!',))
+                l.print_(('sync-end',))
             
-            for file in files_list:
-                # send file-path-request
-                send_(payload='req-file-path',s=client,debug='server',)
-                # check respponse (req-file-path-ok)
-                if recv_(s=client,debug='server',e=['req-file-path-ok'],e_=str) == 'req-file-path-ok':
+            # {}changes in remote dir | recive files from client(remote)
+            elif type(_) is dict: 
+                files_list = _['client-file-list']
+                # l.print_((files_list,),s='server')
+                l.print_(([os.path.basename(_) for _ in files_list],),s='server')
+                
+                for file in files_list:
+                    # send file-path-request
+                    send_(payload='req-file-path',s=client,debug='server',)
+                    # check respponse (req-file-path-ok)
+                    if recv_(s=client,debug='server',e=['req-file-path-ok'],e_=str) == 'req-file-path-ok':
 
-                    # send file path (request file) as dict
-                    send_(s=client,payload={'req-file-path':file},debug='server',)
+                        # send file path (request file) as dict
+                        send_(s=client,payload={'req-file-path':file},debug='server',)
 
-                    # check sd-ok
-                    l.print_(payload=(msgg := recv_(s=client,debug='server',e_=str,e=['sd-ok'],),),s='server',)
-                    if msgg == 'sd-ok': 
-                        l.print_((receive_file(save_dir=SYNC_DIR,client_socket=client,debug_='server'),),s='server')
-                    l.print_((os.path.basename(file),'done!',),s='server')
-                l.print_(('sync-end',),s='server')
+                        # check sd-ok
+                        l.print_(payload=(msgg := recv_(s=client,debug='server',e_=str,e=['sd-ok'],),),s='server',)
+                        if msgg == 'sd-ok': 
+                            l.print_((receive_file(save_dir=SYNC_DIR,client_socket=client,debug_='server'),),s='server')
+                        l.print_((os.path.basename(file),'done!',),s='server')
+                    l.print_(('sync-end',),s='server')
 
-        # 'str'  |  error-Exception  
-        elif type(_) is str: 
-            l.print_((_,),s='(ERROR)')
-            break
+            # 'str'  |  error-Exception  
+            elif type(_) is str: 
+                l.print_((_,),s='(ERROR)')
+                memry_dict['server_running'] = False
+                memry_dict['restart'] = True
+        
+        except Exception as e: 
+            l.print_((e,),s='(ERROR)')
+            memry_dict['server_running'] = False
+            memry_dict['restart'] = True
 
     # close client-sockets | closing client [API]
     close_Client(True)
@@ -233,6 +252,7 @@ def server():
 global memry_dict
 memry_dict = {
     'server_running' : False,
+    'restart' : False,
     'server_port' : port,
     'server_ip' : get_wifi_ip_address(),
     'supported_speed' : [SPEED_10,SPEED_50],

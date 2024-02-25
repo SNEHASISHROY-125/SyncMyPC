@@ -23,6 +23,11 @@ server_ip = ip_
 server_port = 25200  # Replace with the server's port number
 
 def client():
+
+    '''
+    ``dont call this function more than once or directly, if you want to embed in gui use start_client()``
+    '''
+
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     '''File_Transfer ,PORT 25200'''
     client_socket.connect((server_ip, server_port))
@@ -33,13 +38,15 @@ def client():
     server_Q_port = json.loads(client_socket.recv(1024).decode())['Qport']
 
 
-    # connect to server Query socket
+    # connect to server Query socket | to ask server-syncQ
     server_Q_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    '''Client-Query-socket to connect with server_syncQ ,PORT 25250'''
+    '''
+    Client-Query-socket to connect with server_syncQ ,PORT 25250
+    '''
     server_Q_socket.connect((server_ip, server_Q_port[0]))
 
 
-    # connect to server Query socket
+    # connect to Client-syncQ-socket
     server_Q_socket_2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     '''Client-syncQ-socket ,PORT 25300'''
     server_Q_socket_2.connect((server_ip, server_Q_port[1]))
@@ -57,7 +64,7 @@ def client():
     Query Dict: server-client (query)
     '''
 
-    # s_lock = threading.Lock()         
+    # s_lock = threading.Lock()
     threading.Thread(target=sync_Q,args=(server_Q_socket_2,Q_DICT,'client')).start()
 
 
@@ -65,49 +72,102 @@ def client():
     c = T()
     c._debug = 'c-main-loop'
 
-    while True:
-        print('client-lloop.....')
-        msgg = recv_(s=client_socket,debug='client',e=['req-file-path','close-ok','file-path'],e_=str)    # prepare for recv-file
-        print('[FROM:lin 57] llop',msgg)
+    #  CONFIGURE memory_dict
+    global memry_dict
+    # Set current_speed:
+    memry_dict['current_speed'] = ask_sync_Q(s=server_Q_socket,q='current_speed')
+    # Set supported_speed:
+    memry_dict['supported_speed'] = ask_sync_Q(s=server_Q_socket,q='supported_speed')
+    # Set server_ip:
+    memry_dict['server_ip'] = server_ip
+    # Set server_port:
+    memry_dict['server_port'] = server_port
 
-        if msgg == 'close-ok':
-            print('clss')
-            server_Q_socket_2.send('close-ok'.encode())
-            server_Q_socket.send('close-ok'.encode())
-            break
-        
-        elif msgg == 'req-file-path': 
-            send_(s=client_socket,payload='req-file-path-ok',debug='client',)
-            res = recv_(s=client_socket,debug='client',e_=dict,e=['req-file-path'])
-            c.print_((res,),s='client')
-            file_path = (res)['req-file-path']
-            # c.print_((res,file_path,),s='client',)
+    # START CLIENT-LOOP
+    memry_dict['client_running'] = True
+    while memry_dict['client_running']: # True
+        try:
+            print('client-lloop.....')
+            msgg = recv_(s=client_socket,debug='client',e=['req-file-path','close-ok','file-path'],e_=str)    # prepare for recv-file
+            print('[FROM:lin 57] llop',msgg)
 
-            # get speed from server (Query: speed)
-            '''
-            server_Q_socket.send('current_speed'.encode())
-            c.print_((res:= json.loads(server_Q_socket.recv(1024).decode()),),s='client',)
-            '''
-            res = ask_sync_Q(s=server_Q_socket,q='current_speed')
-            speed = res['current_speed']
+            if msgg == 'close-ok':
+                print('clss')
+                server_Q_socket_2.send('close-ok'.encode())
+                server_Q_socket.send('close-ok'.encode())
+                memry_dict['client_running'] = False
+            
+            elif msgg == 'req-file-path': 
+                send_(s=client_socket,payload='req-file-path-ok',debug='client',)
+                res = recv_(s=client_socket,debug='client',e_=dict,e=['req-file-path'])
+                c.print_((res,),s='client')
+                file_path = (res)['req-file-path']
+                # c.print_((res,file_path,),s='client',)
 
-            # send file-notice  (sending-file now)
-            send_(s=client_socket,payload='sd-ok',debug='client',)
-            # send file to client
-            send_file(client=client_socket,file_path=file_path,speed_=speed)
-            # client_socket.
+                # get speed from server (Query: speed)
+                '''
+                server_Q_socket.send('current_speed'.encode())
+                c.print_((res:= json.loads(server_Q_socket.recv(1024).decode()),),s='client',)
+                '''
+                res = ask_sync_Q(s=server_Q_socket,q='current_speed')
+                speed = res['current_speed']
 
-        elif msgg == 'file-path':
-            # print(os.getcwd())
-            send_(s=client_socket,payload='file-path-ok',debug='client',)    # all resources prepared, ready to recv-file!
-            # for file in msgg:
-            c.print_((receive_file(client_socket=client_socket,save_dir=SYNC_DIR),),s='client',)
+                # send file-notice  (sending-file now)
+                send_(s=client_socket,payload='sd-ok',debug='client',)
+                # send file to client
+                send_file(client=client_socket,file_path=file_path,speed_=speed)
+                # client_socket.
 
-        # error in socket-connection (server)   
-        elif msgg == 'connection-error':...
-        else: print('client: [ERROR] unknown msg:',msgg)
+            elif msgg == 'file-path':
+                # print(os.getcwd())
+                send_(s=client_socket,payload='file-path-ok',debug='client',)    # all resources prepared, ready to recv-file!
+                # for file in msgg:
+                c.print_((receive_file(client_socket=client_socket,save_dir=SYNC_DIR),),s='client',)
 
-    print('done!')
+            # error in socket-connection (server)   
+            elif msgg == 'connection-error':
+                # restart app | if connection-error
+                # if str(input('RESTART-APP: [ERROR] connection-error (Y/N):')) == 'Y':
+                    # threading.Thread(target=lambda: os.system('python client.py')).start()
+                    
+                    # change restart-status
+                memry_dict['restart'] = True
+                # call close client-API
+                # server_Q_socket_2.send('close-ok'.encode())
+                # server_Q_socket.send('close-ok'.encode())
+                # exit client loop
+                memry_dict['client_running'] = False
+
+            else: c.print_('client', ('[ERROR] unknown msg:',msgg),)
+
+        except Exception as e: 
+            c.print_(('client: [ERROR]',e,),s='client',)
+            memry_dict['client_running'] = False
+            memry_dict['restart'] = True
+            # server_Q_socket_2.send('close-ok'.encode())
+            # server_Q_socket.send('close-ok'.encode())
+            # client_socket.close()
+            # server_Q_socket.close()
+            # server_Q_socket_2.close()
+            # break
+
+    print('CLIENT CLOSED')
     client_socket.close()
 
-client()
+'''
+``PARENTAL-CONTROLL``
+'''
+global memry_dict
+memry_dict = {
+    'client_running' : False,
+    'restart' : False,
+    'server_ip' : server_ip,
+    'server_port' : server_port,
+    'supported_speed' : [10,50],
+    'current_speed' : 10,
+    'sync_dir' : SYNC_DIR
+}
+
+# start server
+def start_client():
+    threading.Thread(target=client).start()

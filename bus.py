@@ -304,15 +304,16 @@ def recv_(s:socket.socket,debug:str,e:list[str],e_:type,buff:int=1024,_DEBUG:boo
                 try:rec = rec.decode() # try to ->str 
                 except Exception:rec = rec  # keep it as bytes
             
-            print('EEE',rec)
+            # print('EEE',rec)
 
         except Exception as e: 
             t.print_(payload=('Exception',e,),s=s_,d=_DEBUG)
-            if input('try again (y/n)') == 'y': 
-                    continue
-            else:
-                print('breaking')
-                return 'connection-error'
+            # if input('try again (y/n)') == 'y': 
+            #         continue
+            # else:
+            #     print('breaking')
+            #     return 'connection-error'
+            return 'connection-error'
 
         # verify thats from send_ and has 'recv_send_ ' key in (dict)
         if type(rec) is dict and 'recv_send_ ' in rec.keys():
@@ -396,35 +397,38 @@ def send_(s:socket.socket,debug:str,payload:any,res:str='ok',try_:int=2,_DEBUG:b
     run = True
 
     while run :
-        t.print_(('sending...',),s=s_,d=_DEBUG)
-        ## adding header to payload and send
-        # wait for 1-sec (_sleep)
-        time.sleep(_sleep)
-        if type(payload) is not dict: s.send(  str(h_+payload).encode()   )
-        elif type(payload) is dict: 
-            payload['recv_send_ '] = 'recv_send_ '
-            s.send(  json.dumps(payload).encode()   )
+        try:
+            t.print_(('sending...',),s=s_,d=_DEBUG)
+            ## adding header to payload and send
+            # wait for 1-sec (_sleep)
+            time.sleep(_sleep)
+            if type(payload) is not dict: s.send(  str(h_+payload).encode()   )
+            elif type(payload) is dict: 
+                payload['recv_send_ '] = 'recv_send_ '
+                s.send(  json.dumps(payload).encode()   )
 
-        while True:        
-            # wait for 'ok' response
-            rec = s.recv(1024).decode()
-            # verify thats from recv_ (must have 'recv_send_ ')(header)
-            if not rec.startswith('recv_send_ '): continue
-            else: break
+            while True:        
+                # wait for 'ok' response
+                rec = s.recv(1024).decode()
+                # verify thats from recv_ (must have 'recv_send_ ')(header)
+                if not rec.startswith('recv_send_ '): continue
+                else: break
 
-        # try to match
-        if rec.split('recv_send_ ',1)[1] == res: 
-            t.print_((rec,),s=s_,d=_DEBUG)
-            break
-        else: 
-            if try_ !=0:
-                try_ -= 1
-            else:
-                t.print_((f'tried {t_} times, getting {rec} not {h_+res}',),s=s_,d=_DEBUG)
-                if input('try again (y/n)') == 'y': 
-                    try_ = t_
-                    continue
+            # try to match
+            if rec.split('recv_send_ ',1)[1] == res: 
+                t.print_((rec,),s=s_,d=_DEBUG)
+                break
+            else: 
+                if try_ !=0:
+                    try_ -= 1
                 else:
-                    break
+                    t.print_((f'tried {t_} times, getting {rec} not {h_+res}',),s=s_,d=_DEBUG)
+                    if input('try again (y/n)') == 'y': 
+                        try_ = t_
+                        continue
+                    else:
+                        break
 
-            #
+        except Exception as e: 
+            t.print_(payload=('Exception',e,),s=s_,d=_DEBUG)
+            break

@@ -1,8 +1,9 @@
 # import test
-import server, time 
+import client as c, time 
 
-server.start_server()
+c.start_client()
 
 while True:
     time.sleep(3)
-    print(server.memry_dict['server_running'])
+    print(c.memry_dict['restart'])
+    print(c.memry_dict['client_running'])
