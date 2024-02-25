@@ -195,7 +195,7 @@ def get_files_metadata(dir_:str=None,path_:str=None) -> dict|None:
     }
     else: print('path not valid! -from explr')
 
-def sync_Q(socket:socket.socket,Q_DICT:dict) -> None:
+def sync_Q(socket:socket.socket,Q_DICT:dict,f='') -> None:
     '''
     SYnc Query function that runs on separete thread, provides query topics from ``Q_DICT``,
     SENDS-as ``DICT``
@@ -234,7 +234,7 @@ def sync_Q(socket:socket.socket,Q_DICT:dict) -> None:
             else: 
                 socket.send(json.dumps({'Query':'not valid'}).encode())
         except Exception as e : 
-            t.print_(s='syncQ',payload=('Exception',e,),)
+            t.print_(s='syncQ',payload=(f,res,'Exception',e,),)
             break
 
 def ask_sync_Q(s:socket.socket,q:str) -> dict:
@@ -303,12 +303,16 @@ def recv_(s:socket.socket,debug:str,e:list[str],e_:type,buff:int=1024,_DEBUG:boo
             except json.decoder.JSONDecodeError: 
                 try:rec = rec.decode() # try to ->str 
                 except Exception:rec = rec  # keep it as bytes
+            
+            print('EEE',rec)
+
         except Exception as e: 
             t.print_(payload=('Exception',e,),s=s_,d=_DEBUG)
             if input('try again (y/n)') == 'y': 
                     continue
             else:
-                break
+                print('breaking')
+                return 'connection-error'
 
         # verify thats from send_ and has 'recv_send_ ' key in (dict)
         if type(rec) is dict and 'recv_send_ ' in rec.keys():

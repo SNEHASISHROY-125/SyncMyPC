@@ -25,27 +25,44 @@ from bus import recv_, send_, send_file , receive_file , sync_Q , ask_sync_Q
 from tools.Btools import Tools as T
 # from folder import mkZIP
 
-global RUN_ 
-RUN_ = False
+
+def get_wifi_ip_address() -> str:
+    hostname = socket.gethostname()
+    ip_address = socket.gethostbyname(hostname)
+    return ip_address
+
+global port
+port = 25200
+'''
+Server-Port to Listen
+'''
+
+SYNC_DIR = ''
+'''
+Dir to save files
+'''
+if SYNC_DIR == '': SYNC_DIR = os.path.join(os.getcwd(),'server')
+if not os.path.isdir(SYNC_DIR): os.mkdir(SYNC_DIR)
+
+SPEED_10 = 10485760   # 10MBPS
+SPEED_50 = 52428800   # 50MBPS
+'''
+Supported Speeds in bytes
+'''
+
+CURRENT_SPEED = SPEED_10
 
 def server():
-
-    def get_wifi_ip_address() -> str:
-        hostname = socket.gethostname()
-        ip_address = socket.gethostbyname(hostname)
-        return ip_address
-
-
-    SYNC_DIR = os.path.join(os.getcwd(),'server')
-    if not os.path.isdir(SYNC_DIR): os.mkdir(SYNC_DIR)
+    
     '''
-    Dir to save files
+    DONT CALL THIS FUNCTION MORE THAN ONCE OR DIRECTLY, IF YOU WANT TO EMBED IN GUI USE start_server()
     '''
 
     s_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     '''
     Server-Socket, PORT 25200
     '''
+
     Q_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     '''
     Server-Query-Socket, PORT 25250   
@@ -55,8 +72,6 @@ def server():
     Server-Query-Socket2, PORT 25300 
     '''
 
-    global port
-    port = 25200
     s_socket.bind(
         (get_wifi_ip_address(), port)
         )
@@ -93,28 +108,20 @@ def server():
     client_Q_socket2, Q_  =  Q_socket_2.accept()
     '''socket to connect with client-SyncQ-server ,PORT 25300'''
 
-
-    SPEED_10 = 10485760   # 10MBPS
-    SPEED_50 = 52428800   # 50MBPS
-
     # Function to send a file
 
-
-
     def func_list_dir() -> list: return glob.glob(os.path.join(SYNC_DIR,'**/*.*'), recursive=True)
-
 
     Q_DICT = {
         'dir_[list]'  :  func_list_dir ,
         'sync_dir'  : SYNC_DIR,
         'supported_speed'    :   [SPEED_10, SPEED_50],
-        'current_speed'    :    SPEED_10 ,
+        'current_speed'    :        CURRENT_SPEED ,
         'client_sockets'    :   [client,client_Q_socket,client_Q_socket2]
     }
     '''
     Dict of server constant values
     '''         
-
 
     def sync_dir(socket:socket.socket=None,dir_:str=None,dir_vs:str=SYNC_DIR,file_meta:list=None) -> list[str] | dict[str : list[str]] | None |Exception:
         # change to dir-location
@@ -145,28 +152,28 @@ def server():
         except Exception as e: return str(e)
 
 
-    print('chilling!')
+    print('SERVER STARTED!')
 
 
     # kick-start sync_Q in seperate Thread (Query from Q_DICT exchange through socket)
-    threading.Thread(target=sync_Q,args=(client_Q_socket,Q_DICT ,)).start()
+    threading.Thread(target=sync_Q,args=(client_Q_socket,Q_DICT,'server')).start()
 
     # close client-API
     def close_Client(d:bool=False) -> None:
         '''Closes client socckets'''
         if d:
-            print(client.send('close-ok'.encode()))
+            print(client.send('recv_send_ close-ok'.encode()))
             print(client_Q_socket2.send('close-ok'.encode()))
 
     # main-loop:
     l = T()
     l._debug = '(main-loop)'
 
-    # RUN_ = BOOL | SERVER-MAIN-LOOP-STATE
-    global RUN_
-    RUN_ = True
-    print(RUN_)
-    while True:
+    # RUNNING_ = BOOL | SERVER-MAIN-LOOP-STATE
+    global memry_dict
+    memry_dict['server_running'] = True
+    print(memry_dict['server_running'])
+    while memry_dict['server_running']: #True:
         # checks for dir updates(both remote and local) ,if changes in dir;
         # func returns list or dict ,containing file paths, in each eteration
         (_:=sync_dir(dir_vs=SYNC_DIR,socket=client_Q_socket2)) #dir_=os.path.join(os.getcwd(),'client')))
@@ -212,4 +219,31 @@ def server():
             l.print_((_,),s='(ERROR)')
             break
 
-print(RUN_)
+    # close client-sockets | closing client [API]
+    close_Client(True)
+    # close server-sockets
+    s_socket.close()
+    Q_socket.close()
+    Q_socket_2.close()
+    print('SERVER CLOSED!')
+
+# DICT THAT CONTAINS OPERATIONAL INFO.
+# import time
+
+global memry_dict
+memry_dict = {
+    'server_running' : False,
+    'server_port' : port,
+    'server_ip' : get_wifi_ip_address(),
+    'supported_speed' : [SPEED_10,SPEED_50],
+    'current_speed': CURRENT_SPEED,
+    'sync_dir' : SYNC_DIR,
+}
+
+# operation | START-SERVER
+def start_server():
+    threading.Thread(target=server).start()
+
+# while True:
+#     time.sleep(5)
+#     print('at end: ',memry_dict['server_running'])
