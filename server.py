@@ -15,10 +15,15 @@ returns as list | dict (local-remote)
     - sets up three sever-sockets: server_socket, query_socket, query_socket2
     - start Sync_Q in seperate thread
     - start
+
+USE
 ===
 - import server as s
 - s.start_server() : starts server in seperate thread, but linked with main-thread
 - s.memry_dict : contains server-constants : [server_running, server_port, server_ip, supported_speed, current_speed, sync_dir]
+- s.memry_dict['callback_func'] : callback function to update UI components
+-- Set ```memry_dict['callback_func']``` = ```callback_func{instance}```
+- Change server() to operate callback_func accordingly
 
 ``PARENTAL CONTROLL``
  - server_running : BOOL | can be changed to stop server running in seperate thread
@@ -65,7 +70,7 @@ CURRENT_SPEED = SPEED_10
 def server():
     
     '''
-    DONT CALL THIS FUNCTION MORE THAN ONCE OR DIRECTLY, IF YOU WANT TO EMBED IN GUI USE start_server()
+    DONT CALL THIS FUNCTION MORE THAN ONCE OR DIRECTLY, IF YOU WANT TO EMBED IN GUI USE ```start_server()```
     '''
 
     s_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -223,6 +228,11 @@ def server():
                         # check sd-ok
                         l.print_(payload=(msgg := recv_(s=client,debug='server',e_=str,e=['sd-ok'],),),s='server',)
                         if msgg == 'sd-ok': 
+                            # callback {GUI} to update progress-bar
+                            try:...
+                                # memry_dict['callback_func'](f=file)
+                            except Exception as e: l.print_((e,),s='(ERROR)')
+
                             l.print_((receive_file(save_dir=SYNC_DIR,client_socket=client,debug_='server'),),s='server')
                         l.print_((os.path.basename(file),'done!',),s='server')
                     l.print_(('sync-end',),s='server')
@@ -247,7 +257,6 @@ def server():
     print('SERVER CLOSED!')
 
 # DICT THAT CONTAINS OPERATIONAL INFO.
-# import time
 
 global memry_dict
 memry_dict = {
@@ -258,12 +267,16 @@ memry_dict = {
     'supported_speed' : [SPEED_10,SPEED_50],
     'current_speed': CURRENT_SPEED,
     'sync_dir' : SYNC_DIR,
+    'callback_func' : None,
 }
 
 # operation | START-SERVER
 def start_server():
+    '''
+    Start Server in seperate thread{GUI}
+    Not call it more than ```once```
+    
+
+    '''
     threading.Thread(target=server).start()
 
-# while True:
-#     time.sleep(5)
-#     print('at end: ',memry_dict['server_running'])
